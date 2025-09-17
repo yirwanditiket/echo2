@@ -44,6 +44,9 @@ routes:
     response_header:
       X-Custom-Header: "custom-value"
       Cache-Control: "no-cache"
+
+  - path: "/api/{anything}"
+    response_body: "Wildcard api"
   
   # Header-based conditional responses
   - path: "/api/secure"

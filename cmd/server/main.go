@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fasthttp/router"
 	"github.com/valyala/fasthttp"
 	"github.com/yirwanditiket/echo2/configs"
 )
@@ -67,9 +68,12 @@ func main() {
 	// Create the server
 	appServer := &Server{config: config}
 
-	// Create fasthttp server with our handler
+	// Initialize router with configured routes
+	appServer.initializeRouter()
+
+	// Create fasthttp server with router handler
 	httpServer := &fasthttp.Server{
-		Handler: appServer.RequestHandler,
+		Handler: appServer.router.Handler,
 		Name:    "echo-server",
 	}
 
@@ -103,9 +107,12 @@ func main() {
 	}
 }
 
-// Server holds the server configuration and handles requests
+// Server holds the server configuration and handles requests.
+// The server uses fasthttp/router for efficient HTTP routing instead of manual path matching.
+// This provides better performance and proper HTTP status code handling.
 type Server struct {
-	config *configs.ServerConfig
+	config *configs.ServerConfig // Server configuration loaded from YAML
+	router *router.Router        // FastHTTP router for efficient request routing
 }
 
 // RequestDump represents the structure for request dump data that is included
@@ -117,37 +124,77 @@ type RequestDump struct {
 	QueryParameters map[string]string `json:"query_parameters"` // All query parameters as key-value pairs
 }
 
-// RequestHandler handles HTTP requests based on configured routes
-func (s *Server) RequestHandler(ctx *fasthttp.RequestCtx) {
+// initializeRouter sets up the fasthttp/router with all configured routes.
+// This method creates a new router instance and registers each configured route
+// with its specific HTTP method. It provides several benefits over manual routing:
+// - Efficient path matching using radix trees
+// - Proper HTTP status codes (405 for wrong methods, 404 for missing paths)
+// - Support for all HTTP methods including custom ones
+// - Better performance for high-traffic scenarios
+func (s *Server) initializeRouter() {
+	s.router = router.New()
+
+	// Add all configured routes to the router
+	for _, route := range s.config.Routes {
+		method := strings.ToUpper(route.GetMethod())
+		path := route.Path
+
+		// Create a closure to capture the route configuration
+		routeConfig := route
+		handler := func(ctx *fasthttp.RequestCtx) {
+			s.handleRouteRequest(ctx, routeConfig)
+		}
+
+		// Register the route with the appropriate HTTP method
+		switch method {
+		case "GET":
+			s.router.GET(path, handler)
+		case "POST":
+			s.router.POST(path, handler)
+		case "PUT":
+			s.router.PUT(path, handler)
+		case "DELETE":
+			s.router.DELETE(path, handler)
+		case "PATCH":
+			s.router.PATCH(path, handler)
+		case "HEAD":
+			s.router.HEAD(path, handler)
+		case "OPTIONS":
+			s.router.OPTIONS(path, handler)
+		default:
+			// For any other methods, use the ANY method (supports all HTTP methods)
+			slog.Warn("Unknown HTTP method, registering as ANY", "method", method, "path", path)
+			s.router.ANY(path, handler)
+		}
+
+		slog.Debug("Registered route", "method", method, "path", path)
+	}
+
+	// Add a catch-all route for 404 handling
+	s.router.NotFound = func(ctx *fasthttp.RequestCtx) {
+		ctx.SetStatusCode(fasthttp.StatusNotFound)
+		ctx.SetContentType("text/plain")
+		ctx.WriteString("404 Not Found")
+	}
+}
+
+// handleRouteRequest processes a specific route request (used by router).
+// This method is called by the fasthttp/router when a route matches an incoming request.
+// It serves as an adapter between the router and the existing route processing logic,
+// providing access logging and delegating actual response handling to handleRoute.
+//
+// Parameters:
+// - ctx: The fasthttp request context containing request/response data
+// - route: The matched route configuration with response details
+func (s *Server) handleRouteRequest(ctx *fasthttp.RequestCtx, route configs.Route) {
 	path := string(ctx.Path())
 	method := string(ctx.Method())
 
 	// Access log at debug level
 	slog.Debug("Received request", "method", method, "path", path)
 
-	// Find matching route
-	for _, route := range s.config.Routes {
-		if s.matchRoute(route, path, method) {
-			s.handleRoute(ctx, route)
-			return
-		}
-	}
-
-	// No route matched, return 404
-	ctx.SetStatusCode(fasthttp.StatusNotFound)
-	ctx.SetContentType("text/plain")
-	ctx.WriteString("404 Not Found")
-}
-
-// matchRoute checks if a route matches the given path and method
-func (s *Server) matchRoute(route configs.Route, path, method string) bool {
-	// Check method match
-	if !strings.EqualFold(route.GetMethod(), method) {
-		return false
-	}
-
-	// Check path match (exact match for now)
-	return route.Path == path
+	// Process the matched route
+	s.handleRoute(ctx, route)
 }
 
 // parseDelayParam extracts and parses the delay parameter from query string

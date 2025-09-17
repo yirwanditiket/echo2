@@ -12,64 +12,60 @@ import (
 	"github.com/yirwanditiket/echo2/configs"
 )
 
-func TestServer_matchRoute(t *testing.T) {
-	config := &configs.ServerConfig{}
-	server := &Server{config: config}
-
-	tests := []struct {
-		name     string
-		route    configs.Route
-		path     string
-		method   string
-		expected bool
-	}{
-		{
-			name:     "exact match with explicit method",
-			route:    configs.Route{Path: "/health", Method: "GET"},
-			path:     "/health",
-			method:   "GET",
-			expected: true,
-		},
-		{
-			name:     "exact match with default method",
-			route:    configs.Route{Path: "/health", Method: ""},
-			path:     "/health",
-			method:   "GET",
-			expected: true,
-		},
-		{
-			name:     "path mismatch",
-			route:    configs.Route{Path: "/health", Method: "GET"},
-			path:     "/status",
-			method:   "GET",
-			expected: false,
-		},
-		{
-			name:     "method mismatch",
-			route:    configs.Route{Path: "/health", Method: "GET"},
-			path:     "/health",
-			method:   "POST",
-			expected: false,
-		},
-		{
-			name:     "case insensitive method match",
-			route:    configs.Route{Path: "/health", Method: "get"},
-			path:     "/health",
-			method:   "GET",
-			expected: true,
+func TestServer_initializeRouter(t *testing.T) {
+	config := &configs.ServerConfig{
+		Routes: []configs.Route{
+			{
+				Path:         "/health",
+				Method:       "GET",
+				ResponseBody: "OK",
+			},
+			{
+				Path:   "/api/users",
+				Method: "POST",
+			},
+			{
+				Path:   "/default-method", // Will use default GET method
+				Method: "",
+			},
+			{
+				Path:   "/unknown-method",
+				Method: "CUSTOM", // Will be registered as ANY
+			},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := server.matchRoute(tt.route, tt.path, tt.method); got != tt.expected {
-				t.Errorf("Server.matchRoute() = %v, want %v", got, tt.expected)
-			}
-		})
+	server := &Server{config: config}
+	server.initializeRouter()
+
+	// Test that router was initialized
+	if server.router == nil {
+		t.Fatal("Router was not initialized")
+	}
+
+	// Test that NotFound handler was set
+	if server.router.NotFound == nil {
+		t.Error("NotFound handler was not set")
+	}
+
+	// Test NotFound handler
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("/nonexistent")
+	ctx.Request.Header.SetMethod("GET")
+
+	server.router.NotFound(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", ctx.Response.StatusCode())
+	}
+
+	expectedBody := "404 Not Found"
+	if string(ctx.Response.Body()) != expectedBody {
+		t.Errorf("Expected body '%s', got '%s'", expectedBody, string(ctx.Response.Body()))
 	}
 }
 
-func TestServer_RequestHandler(t *testing.T) {
+func TestServer_RouterIntegration(t *testing.T) {
 	config := &configs.ServerConfig{
 		Address: ":8080",
 		Routes: []configs.Route{
@@ -91,6 +87,7 @@ func TestServer_RequestHandler(t *testing.T) {
 	}
 
 	server := &Server{config: config}
+	server.initializeRouter()
 
 	tests := []struct {
 		name            string
@@ -135,8 +132,8 @@ func TestServer_RequestHandler(t *testing.T) {
 			name:           "wrong method",
 			method:         "POST",
 			path:           "/health",
-			expectedStatus: fasthttp.StatusNotFound,
-			expectedBody:   "404 Not Found",
+			expectedStatus: fasthttp.StatusMethodNotAllowed,
+			expectedBody:   "Method Not Allowed",
 		},
 	}
 
@@ -146,7 +143,7 @@ func TestServer_RequestHandler(t *testing.T) {
 			ctx.Request.SetRequestURI(tt.path)
 			ctx.Request.Header.SetMethod(tt.method)
 
-			server.RequestHandler(ctx)
+			server.router.Handler(ctx)
 
 			// Check status code
 			if ctx.Response.StatusCode() != tt.expectedStatus {
@@ -205,6 +202,43 @@ func TestServer_handleRoute(t *testing.T) {
 	}
 }
 
+func TestServer_handleRouteRequest(t *testing.T) {
+	config := &configs.ServerConfig{}
+	server := &Server{config: config}
+
+	route := configs.Route{
+		Path:         "/api/test",
+		Method:       "POST",
+		ResponseBody: "Route Test Response",
+		ResponseHeader: map[string]string{
+			"X-Route-Test": "route-value",
+		},
+	}
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("/api/test")
+	ctx.Request.Header.SetMethod("POST")
+
+	server.handleRouteRequest(ctx, route)
+
+	// Check response body
+	body := string(ctx.Response.Body())
+	if body != "Route Test Response" {
+		t.Errorf("Expected body %q, got %q", "Route Test Response", body)
+	}
+
+	// Check custom header
+	customHeader := string(ctx.Response.Header.Peek("X-Route-Test"))
+	if customHeader != "route-value" {
+		t.Errorf("Expected X-Route-Test header %q, got %q", "route-value", customHeader)
+	}
+
+	// Check that the method processes the route correctly
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Errorf("Expected status %d, got %d", fasthttp.StatusOK, ctx.Response.StatusCode())
+	}
+}
+
 func TestServer_RequestHandler_WithConditions(t *testing.T) {
 	config := &configs.ServerConfig{
 		Address: ":8080",
@@ -244,6 +278,7 @@ func TestServer_RequestHandler_WithConditions(t *testing.T) {
 	}
 
 	server := &Server{config: config}
+	server.initializeRouter()
 
 	tests := []struct {
 		name            string
@@ -319,7 +354,7 @@ func TestServer_RequestHandler_WithConditions(t *testing.T) {
 				ctx.Request.Header.Set(key, value)
 			}
 
-			server.RequestHandler(ctx)
+			server.router.Handler(ctx)
 
 			// Check status code
 			if ctx.Response.StatusCode() != tt.expectedStatus {
@@ -461,6 +496,7 @@ func TestServer_RequestHandler_WithDelay(t *testing.T) {
 	}
 
 	server := &Server{config: config}
+	server.initializeRouter()
 
 	tests := []struct {
 		name           string
@@ -522,7 +558,7 @@ func TestServer_RequestHandler_WithDelay(t *testing.T) {
 			ctx.Request.Header.SetMethod("GET")
 
 			start := time.Now()
-			server.RequestHandler(ctx)
+			server.router.Handler(ctx)
 			elapsed := time.Since(start)
 
 			// Check status code

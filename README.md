@@ -4,9 +4,10 @@ A high-performance HTTP server built with [Valyala's fasthttp](https://github.co
 
 ## Features
 
-- **High Performance**: Built on top of fasthttp for maximum performance
+- **High Performance**: Built on top of fasthttp for maximum performance with fasthttp/router for efficient routing
 - **YAML Configuration**: Define routes, methods, responses, and headers in a simple YAML file
 - **Structured Logging**: Uses Go's `log/slog` with configurable log levels (debug, info, warn, error)
+- **Advanced Routing**: Uses fasthttp/router for efficient HTTP method and path-based routing with proper status codes (405 for wrong methods, 404 for missing paths)
 - **Flexible Route Configuration**: Support for custom HTTP methods, response bodies, and headers
 - **Header-Based Conditional Responses**: Return different responses based on request headers
 - **Response Delay Parameter**: Add artificial delays to responses using `?delay=10ms` for testing scenarios with shutdown-aware cancellation support
@@ -296,10 +297,10 @@ routes:
 ### Components
 
 #### Server (`cmd/server/main.go`)
-- **Server**: Main server struct that holds configuration
-- **RequestHandler**: FastHTTP request handler that routes requests
-- **matchRoute**: Route matching logic
-- **handleRoute**: Route response handling
+- **Server**: Main server struct that holds configuration and fasthttp/router instance
+- **initializeRouter**: Initializes the fasthttp/router with all configured routes and HTTP methods (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
+- **handleRouteRequest**: FastHTTP request handler for individual routes (called by router)
+- **handleRoute**: Route response handling with condition matching and response generation
 
 #### Configuration (`configs/`)
 - **ServerConfig**: Main configuration structure
@@ -496,6 +497,18 @@ curl "http://localhost:8080/hello?delay=invalid"
 - Very long delays may cause client timeouts
 - **Shutdown-aware cancellation**: If the server receives a shutdown signal (SIGINT or SIGTERM) during a delay, the request will return early without sending a response, enabling graceful shutdown even with long delays
 - Uses Go's `context.Context` with `ctx.Done()` to detect server shutdown and cancel ongoing delay operations
+
+### Router Implementation
+
+The server uses [fasthttp/router](https://github.com/fasthttp/router) for efficient HTTP routing, providing significant performance improvements over manual route matching.
+
+#### Implementation Notes
+
+- **Method-specific routing**: Each route is registered with its specific HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
+- **Proper HTTP status codes**: Returns 405 Method Not Allowed for existing paths with wrong methods, 404 Not Found for non-existent paths
+- **Unknown methods**: Routes with unrecognized HTTP methods are registered using the router's `ANY` method and logged as warnings
+- **Route closure**: Each route handler is created as a closure that captures the specific route configuration
+- **Custom NotFound handler**: Provides consistent 404 responses for unmatched routes
 
 ### Response Dump
 
