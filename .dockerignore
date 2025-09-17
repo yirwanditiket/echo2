@@ -1,0 +1,65 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+echo-server
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files and coverage
+*_test.go
+*.test
+*.prof
+coverage.out
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Node modules (if any)
+node_modules/
+
+# Vendor directory (if using)
+vendor/
+
+# Docker files (don't copy Dockerfile into image)
+Dockerfile*
+.dockerignore
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+

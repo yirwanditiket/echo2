@@ -1,0 +1,105 @@
+log_level: "debug"
+address: ":8080"
+routes:
+  # Simple GET route with default response
+  - path: "/health"
+    method: "GET"
+    response_body: "OK"
+  
+  # Route with custom headers and JSON response
+  - path: "/api/users"
+    method: "GET"
+    response_body: '{"users": [{"id": 1, "name": "John Doe"}, {"id": 2, "name": "Jane Smith"}]}'
+    response_header:
+      Content-Type: "application/json"
+      X-API-Version: "v1.0"
+  
+  # POST route with custom response
+  - path: "/api/users"
+    method: "POST"
+    response_body: '{"message": "User created successfully", "id": 123}'
+    response_header:
+      Content-Type: "application/json"
+      Location: "/api/users/123"
+  
+  # Route with HTML response
+  - path: "/welcome"
+    response_body: |
+      <html>
+      <head><title>Welcome</title></head>
+      <body><h1>Welcome to Echo Server!</h1></body>
+      </html>
+    response_header:
+      Content-Type: "text/html"
+  
+  # Route using default GET method and empty response
+  - path: "/ping"
+
+  - path: "/dump/request"
+    response_dump: true
+  
+  # Custom headers example
+  - path: "/custom"
+    response_body: "Custom response with headers"
+    response_header:
+      X-Custom-Header: "custom-value"
+      Cache-Control: "no-cache"
+  
+  # Header-based conditional responses
+  - path: "/api/secure"
+    method: "GET"
+    # Default response (unauthorized)
+    response_body: '{"error": "Unauthorized", "message": "Valid authorization required"}'
+    response_status: 401
+    response_header:
+      Content-Type: "application/json"
+      WWW-Authenticate: 'Bearer realm="API"'
+    
+    # Conditional responses based on headers
+    conditions:
+      # Valid bearer token condition
+      - header_match:
+          Authorization: "Bearer secret-token-123"
+        response_body: '{"data": "This is secret information", "user": "authenticated"}'
+        response_status: 200
+        response_header:
+          Content-Type: "application/json"
+          X-User-Role: "user"
+      
+      # Admin API key condition
+      - header_match:
+          X-API-Key: "admin-key-456"
+        response_body: '{"data": "Admin-level information", "permissions": ["read", "write", "admin"]}'
+        response_status: 200
+        response_header:
+          Content-Type: "application/json"
+          X-User-Role: "admin"
+      
+      # Multiple header condition (both required)
+      - header_match:
+          Authorization: "Bearer secret-token-123"
+          X-Client-ID: "mobile-app"
+        response_body: '{"data": "Mobile-specific content", "features": ["offline", "push"]}'
+        response_status: 200
+        response_header:
+          Content-Type: "application/json"
+          X-Client-Type: "mobile"
+  
+  # Another example with different status codes
+  - path: "/api/data"
+    # Default: Method not allowed
+    response_body: '{"error": "Method not allowed"}'
+    response_status: 405
+    response_header:
+      Content-Type: "application/json"
+      Allow: "GET"
+    
+    conditions:
+      # Valid GET request with proper headers
+      - header_match:
+          Accept: "application/json"
+        response_body: '{"items": [1, 2, 3], "total": 3}'
+        response_status: 200
+        response_header:
+          Content-Type: "application/json"
+          X-Total-Count: "3"
