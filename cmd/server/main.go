@@ -73,8 +73,9 @@ func main() {
 
 	// Create fasthttp server with router handler
 	httpServer := &fasthttp.Server{
-		Handler: appServer.router.Handler,
-		Name:    "echo-server",
+		Handler:        appServer.router.Handler,
+		Name:           "echo-server",
+		ReadBufferSize: 12000,
 	}
 
 	// Start server in a goroutine
@@ -191,7 +192,7 @@ func (s *Server) handleRouteRequest(ctx *fasthttp.RequestCtx, route configs.Rout
 	method := string(ctx.Method())
 
 	// Access log at debug level
-	slog.Debug("Received request", "method", method, "path", path)
+	slog.Debug("Received request", "method", method, "path", path, "query", string(ctx.URI().QueryString()))
 
 	// Process the matched route
 	s.handleRoute(ctx, route)
