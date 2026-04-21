@@ -1,4 +1,4 @@
-log_level: "debug"
+log_level: "info"
 address: ":8080"
 routes:
   # Simple GET route with default response

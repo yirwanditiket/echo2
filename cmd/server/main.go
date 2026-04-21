@@ -175,6 +175,8 @@ func (s *Server) initializeRouter() {
 		ctx.SetStatusCode(fasthttp.StatusNotFound)
 		ctx.SetContentType("text/plain")
 		ctx.WriteString("404 Not Found")
+
+		slog.Debug("Received request not found", "method", string(ctx.Method()), "path", string(ctx.Path()))
 	}
 }
 
